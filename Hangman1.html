@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farting Hangman</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Patrick+Hand&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Patrick Hand', cursive;
+            background-color: #f0f4f8; /* A light, friendly background */
+            color: #333;
+        }
+        .creepster {
+            font-family: 'Creepster', cursive;
+        }
+        .keyboard-btn {
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        .keyboard-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        }
+        .keyboard-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        #message-box {
+            transition: opacity 0.5s, transform 0.5s;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
+
+    <div id="game-container" class="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-6 md:p-8 text-center">
+        
+        <h1 class="text-5xl md:text-7xl font-bold mb-2 creepster text-green-700">Farty Hangman</h1>
+        <p class="text-slate-600 mb-6">Guess the word, or he lets one rip!</p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <!-- Left Side: Canvas -->
+            <div class="flex justify-center items-center">
+                <canvas id="hangman-canvas" width="300" height="350"></canvas>
+            </div>
+
+            <!-- Right Side: Game UI -->
+            <div class="flex flex-col items-center justify-center space-y-6">
+                <div id="word-display" class="text-4xl md:text-5xl tracking-widest space-x-2 h-16">
+                    <!-- Word underscores will be generated here -->
+                </div>
+
+                <div id="keyboard" class="grid grid-cols-7 sm:grid-cols-9 gap-2 w-full max-w-md">
+                    <!-- Keyboard will be generated here -->
+                </div>
+
+                <div class="h-8">
+                     <p id="incorrect-guesses-text" class="text-red-500 text-lg font-semibold"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message Box for Win/Loss -->
+        <div id="message-box" class="absolute inset-0 bg-black bg-opacity-70 flex-col items-center justify-center rounded-2xl p-8 opacity-0 pointer-events-none hidden">
+            <h2 id="message-title" class="text-6xl font-bold mb-4 text-white"></h2>
+            <p id="message-subtitle" class="text-2xl mb-6 text-slate-300"></p>
+            <button id="play-again-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-2xl shadow-lg transform hover:scale-105 transition-transform">
+                Play Again
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const canvas = document.getElementById('hangman-canvas');
+        const ctx = canvas.getContext('2d');
+        const wordDisplay = document.getElementById('word-display');
+        const keyboardDiv = document.getElementById('keyboard');
+        const messageBox = document.getElementById('message-box');
+        const messageTitle = document.getElementById('message-title');
+        const messageSubtitle = document.getElementById('message-subtitle');
+        const playAgainBtn = document.getElementById('play-again-btn');
+        const incorrectGuessesText = document.getElementById('incorrect-guesses-text');
+
+        const words = [
+            "JAVASCRIPT", "TAILWIND", "DEVELOPER", "HANGMAN", "FART", "COMPUTER",
+            "KEYBOARD", "PYTHON", "GITHUB", "CHALLENGE", "BROWNIE", "PIZZA",
+            "AWKWARD", "BANJO", "ZOMBIE", "WIZARD", "GALAXY", "JAZZ"
+        ];
+        
+        let selectedWord = '';
+        let guessedLetters = [];
+        let incorrectGuesses = 0;
+        const maxIncorrectGuesses = 7; // Gallows base, pole, top, rope, head, body, fart
+
+        // --- Sound Synthesis with Tone.js ---
+        let fartSound;
+        function setupSound() {
+            // Create a synth with a noisy, wobbly sound for the fart
+            fartSound = new Tone.NoiseSynth({
+                noise: {
+                    type: 'brown' // Brown noise is lower and more "rumbly"
+                },
+                envelope: {
+                    attack: 0.01,
+                    decay: 0.15,
+                    sustain: 0,
+                    release: 0.1
+                }
+            }).toDestination();
+            fartSound.volume.value = -10; // Not too loud!
+        }
+
+        // --- Drawing Functions ---
+        function drawGallows() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#5a2d0c'; // A woody brown color
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+
+            // Base
+            ctx.beginPath();
+            ctx.moveTo(30, 330);
+            ctx.lineTo(270, 330);
+            ctx.stroke();
+
+            // Pole
+            ctx.beginPath();
+            ctx.moveTo(80, 330);
+            ctx.lineTo(80, 50);
+            ctx.stroke();
+            
+            // Top
+            ctx.beginPath();
+            ctx.moveTo(76, 50);
+            ctx.lineTo(200, 50);
+            ctx.stroke();
+            
+            // Rope
+            ctx.beginPath();
+            ctx.moveTo(200, 50);
+            ctx.lineTo(200, 100);
+            ctx.stroke();
+        }
+
+        function drawHangmanPart() {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 5;
+
+            switch (incorrectGuesses) {
+                case 1: // Head
+                    ctx.beginPath();
+                    ctx.arc(200, 130, 30, 0, Math.PI * 2);
+                    ctx.stroke();
+                    break;
+                case 2: // Body
+                    ctx.beginPath();
+                    ctx.moveTo(200, 160);
+                    ctx.lineTo(200, 250);
+                    ctx.stroke();
+                    break;
+                case 3: // Left Arm
+                    ctx.beginPath();
+                    ctx.moveTo(200, 180);
+                    ctx.lineTo(150, 230);
+                    ctx.stroke();
+                    break;
+                case 4: // Right Arm
+                    ctx.beginPath();
+                    ctx.moveTo(200, 180);
+                    ctx.lineTo(250, 230);
+                    ctx.stroke();
+                    break;
+                case 5: // Left Leg
+                    ctx.beginPath();
+                    ctx.moveTo(200, 250);
+                    ctx.lineTo(150, 300);
+                    ctx.stroke();
+                    break;
+                case 6: // Right Leg
+                    ctx.beginPath();
+                    ctx.moveTo(200, 250);
+                    ctx.lineTo(250, 300);
+                    ctx.stroke();
+                    break;
+                case 7: // The FART!
+                    drawFartAnimation();
+                    break;
+            }
+        }
+        
+        function drawFartAnimation() {
+            let fartX = 180;
+            let fartY = 250;
+            let radius = 10;
+            let opacity = 1;
+
+            function animate() {
+                if (opacity <= 0) {
+                    // Redraw the man to clear the fart cloud
+                    drawGallows();
+                    for(let i=1; i<=incorrectGuesses; i++) {
+                        const temp = incorrectGuesses;
+                        incorrectGuesses = i;
+                        drawHangmanPart();
+                        incorrectGuesses = temp;
+                    }
+                    return;
+                }
+                
+                // Redraw gallows and man to clear previous frame
+                drawGallows();
+                 for(let i=1; i<=incorrectGuesses; i++) {
+                    const temp = incorrectGuesses;
+                    incorrectGuesses = i;
+                    drawHangmanPart();
+                    incorrectGuesses = temp;
+                }
+
+                // Draw expanding cloud
+                ctx.beginPath();
+                ctx.arc(fartX, fartY, radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(138, 154, 91, ${opacity})`; // Farty green
+                ctx.fill();
+                
+                radius += 0.5;
+                opacity -= 0.02;
+                
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        // --- Game Logic ---
+        function startGame() {
+            // Reset game state
+            selectedWord = words[Math.floor(Math.random() * words.length)];
+            guessedLetters = [];
+            incorrectGuesses = 0;
+
+            // Reset UI
+            wordDisplay.innerHTML = selectedWord.split('').map(() => `<span class="border-b-4 border-slate-400 w-10 h-14 inline-block text-center"></span>`).join('');
+            incorrectGuessesText.textContent = '';
+            
+            // Create keyboard
+            keyboardDiv.innerHTML = '';
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(letter => {
+                const btn = document.createElement('button');
+                btn.textContent = letter;
+                btn.className = 'keyboard-btn bg-sky-500 hover:bg-sky-600 text-white font-bold p-2 rounded-lg text-lg';
+                btn.addEventListener('click', () => handleGuess(letter));
+                keyboardDiv.appendChild(btn);
+            });
+
+            // Hide message box
+            messageBox.classList.add('opacity-0', 'pointer-events-none', 'hidden');
+            
+            // Draw initial state
+            drawGallows();
+        }
+
+        function handleGuess(letter) {
+             if (Tone.context.state !== 'running') {
+                Tone.context.resume();
+            }
+
+            // Disable the clicked button
+            const buttons = keyboardDiv.getElementsByTagName('button');
+            for (let btn of buttons) {
+                if (btn.textContent === letter) {
+                    btn.disabled = true;
+                    btn.classList.remove('bg-sky-500', 'hover:bg-sky-600');
+                    btn.classList.add('bg-slate-400');
+                    break;
+                }
+            }
+            
+            guessedLetters.push(letter);
+
+            if (selectedWord.includes(letter)) {
+                // Correct guess
+                updateWordDisplay();
+                checkWin();
+            } else {
+                // Incorrect guess
+                incorrectGuesses++;
+                incorrectGuessesText.textContent += '❌ ';
+                drawHangmanPart();
+                if(incorrectGuesses <= 6) { // Don't fart on the last guess
+                     fartSound.triggerAttackRelease("8n");
+                }
+                checkLoss();
+            }
+        }
+
+        function updateWordDisplay() {
+            wordDisplay.innerHTML = selectedWord.split('').map(letter => {
+                if (guessedLetters.includes(letter)) {
+                    return `<span class="border-b-4 border-slate-400 w-10 h-14 inline-block text-center text-green-600">${letter}</span>`;
+                } else {
+                    return `<span class="border-b-4 border-slate-400 w-10 h-14 inline-block text-center"></span>`;
+                }
+            }).join('');
+        }
+        
+        function checkWin() {
+            const isWin = selectedWord.split('').every(letter => guessedLetters.includes(letter));
+            if (isWin) {
+                showEndGameMessage(true);
+            }
+        }
+        
+        function checkLoss() {
+            if (incorrectGuesses >= maxIncorrectGuesses) {
+                showEndGameMessage(false);
+            }
+        }
+
+        function showEndGameMessage(isWin) {
+            if (isWin) {
+                messageTitle.textContent = 'YOU WON!';
+                messageTitle.className = 'text-6xl font-bold mb-4 text-yellow-400 creepster';
+                messageSubtitle.textContent = "You saved him from his own flatulence!";
+            } else {
+                messageTitle.textContent = 'GAME OVER';
+                messageTitle.className = 'text-6xl font-bold mb-4 text-red-500 creepster';
+                messageSubtitle.textContent = `The word was: ${selectedWord}`;
+            }
+            messageBox.classList.remove('opacity-0', 'pointer-events-none', 'hidden');
+            messageBox.classList.add('flex'); // Add flex to center content
+        }
+
+        // --- Event Listeners ---
+        playAgainBtn.addEventListener('click', startGame);
+        
+        // Initial setup
+        window.onload = () => {
+             // Initial sound setup requires user interaction.
+            document.body.addEventListener('click', () => {
+                if (!fartSound) setupSound();
+            }, { once: true });
+            startGame();
+        };
+
+    </script>
+</body>
+</html>
